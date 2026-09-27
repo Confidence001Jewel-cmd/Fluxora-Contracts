@@ -537,7 +537,7 @@ jobs:
         # and ensure production builds don't accidentally depend on test-only features.
         features:
           - ""                    # Production defaults (no features)
-          - "testutils"           # Test utilities feature
+          - "--features testutils" # Test utilities feature
           - "--no-default-features" # Explicit no features
     steps:
       - uses: actions/checkout@v4

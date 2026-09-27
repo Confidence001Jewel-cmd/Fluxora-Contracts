@@ -194,25 +194,41 @@ reassign the stream.
 
 Discriminants are ABI and are never renumbered; new variants are appended.
 
-| # | name | | # | name |
-|---|---|---|---|---|
-| 1 | `StreamNotFound` | | 17 | `NothingToWithdraw` |
-| 2 | `InvalidTimeRange` | | 18 | `InvalidAmount` |
-| 3 | `InvalidCliff` | | 19 | `BatchTooLarge` — exceeds `MAX_BATCH_SIZE = 16` ([details](#constants)) |
-| 4 | `InvalidDeposit` | | 20 | `EmptyBatch` |
-| 5 | `DepositRateTooLow` | | 21 | `DuplicateStreamId` |
-| 6 | `SelfStream` | | 22 | `Overflow` |
-| 7 | `Unauthorized` | | 23 | `TopUpTooSmall` |
-| 8 | `NotCancellable` | | 24 | `StreamIdExhausted` |
-| 9 | `NotPausable` | | 25 | `TokenTransferFailed` |
-| 10 | `NotTransferable` | | 26 | `TokenMissing` |
-| 11 | `StreamNotActive` | | 27 | `DelegateNotPermitted` |
-| 12 | `StreamNotPaused` | | 28 | `DelegateExpired` |
-| 13 | `StreamAlreadyPaused` | | 29 | `MalformedStreamId` |
-| 14 | `StreamTerminated` | | 30 | `RepeatedTransfer` |
-| 15 | `StreamMatured` | | 31 | `InvalidTopUp` |
-| 16 | `InsufficientWithdrawable` | | 32 | `TokenAmountMismatch` |
-| — | — | | 33 | `VestedDecreased` |
+| # | name | condition | status |
+|---:|---|---|---|
+| 1 | `StreamNotFound` | Requested stream has no readable storage entry. | reachable |
+| 2 | `InvalidTimeRange` | `end_time <= start_time`. | reachable |
+| 3 | `InvalidCliff` | `cliff_time` is outside `[start_time, end_time]`. | reachable |
+| 4 | `InvalidDeposit` | Deposit is zero or negative. | reachable |
+| 5 | `DepositRateTooLow` | Deposit is less than schedule duration in seconds. | reachable |
+| 6 | `SelfStream` | Sender and recipient are the same address. | reachable |
+| 7 | `Unauthorized` | Caller is not authorized for the requested operation. | reachable |
+| 8 | `NotCancellable` | Cancellation is attempted on a non-cancellable stream. | reachable |
+| 9 | `NotPausable` | Pause is attempted on a non-pausable stream. | reachable |
+| 10 | `NotTransferable` | Recipient transfer is attempted on a non-transferable stream. | reachable |
+| 11 | `StreamNotActive` | Reserved; current paths return more specific paused or terminated errors. | reserved |
+| 12 | `StreamNotPaused` | Resume is attempted when the stream is not paused. | reachable |
+| 13 | `StreamAlreadyPaused` | Pause is attempted when the stream is already paused. | reachable |
+| 14 | `StreamTerminated` | An operation requires a live stream but it is cancelled or depleted. | reachable |
+| 15 | `StreamMatured` | Top-up is attempted after the accrual end time. | reachable |
+| 16 | `InsufficientWithdrawable` | Explicit withdrawal exceeds a positive available balance. | reachable |
+| 17 | `NothingToWithdraw` | A live stream has no currently withdrawable balance. | reachable |
+| 18 | `InvalidAmount` | Explicit withdrawal or top-up amount is non-positive. | reachable |
+| 19 | `BatchTooLarge` | Batch has more than `MAX_BATCH_SIZE = 16` IDs. | reachable |
+| 20 | `EmptyBatch` | Batch has no stream IDs. | reachable |
+| 21 | `DuplicateStreamId` | Batch contains the same stream ID more than once. | reachable |
+| 22 | `Overflow` | Checked arithmetic overflows or underflows. | reachable |
+| 23 | `TopUpTooSmall` | Positive top-up cannot extend the schedule by at least one second. | reachable |
+| 24 | `StreamIdExhausted` | Next stream ID is `u64::MAX`; allocation cannot wrap. | reachable |
+| 25 | `TokenTransferFailed` | Token contract returns a typed transfer error. | reachable |
+| 26 | `TokenMissing` | Reserved; missing-token host abort cannot be distinguished in native tests. | reserved |
+| 27 | `DelegateNotPermitted` | Delegate uses an operation not included in its grant. | reachable |
+| 28 | `DelegateExpired` | Delegate uses a grant after its expiry. | reachable |
+| 29 | `MalformedStreamId` | Reserved; typed `Vec<u64>` prevents malformed IDs reaching contract code. | reserved |
+| 30 | `RepeatedTransfer` | Recipient transfer targets the current recipient. | reachable |
+| 31 | `InvalidTopUp` | Reserved; non-positive top-ups are rejected as `InvalidAmount` first. | reserved |
+| 32 | `TokenAmountMismatch` | Deposit pull changes pool balance by an unexpected amount. | reachable |
+| 33 | `VestedDecreased` | Reserved; current mutation paths preserve non-decreasing vested value. | reserved |
 
 `TokenTransferFailed` (25) and `TokenMissing` (26) are **stable stream-level categories** for token sub-invocation failures. The token contract's internal error discriminant is intentionally discarded — forwarding it would produce a value clients decode against Fluxora's error table, yielding a silent misinterpretation. The raw diagnostic is visible in the failed transaction's `diagnosticEvents`.
 
