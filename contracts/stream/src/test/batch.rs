@@ -1049,11 +1049,7 @@ fn batch_extend_ttl_size_zero_is_empty_batch() {
     let h = Harness::new();
     let empty: Vec<u64> = Vec::new(&h.env);
 
-    let err = h
-        .client
-        .try_batch_extend_ttl(&empty)
-        .unwrap_err()
-        .unwrap();
+    let err = h.client.try_batch_extend_ttl(&empty).unwrap_err().unwrap();
     assert_eq!(err, Error::EmptyBatch);
 }
 

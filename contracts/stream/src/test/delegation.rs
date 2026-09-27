@@ -612,15 +612,13 @@ fn peel<T, X: std::fmt::Debug>(
 ///
 /// `try_delegate_*` returns a contract error in the outer `Err(Ok(error))`.
 /// Discard each successful return value and unwrap only the host error layer.
-fn delegate_call_result(
-    h: &Harness,
-    id: u64,
-    agent: &Address,
-    op_bit: u32,
-) -> Result<(), Error> {
+fn delegate_call_result(h: &Harness, id: u64, agent: &Address, op_bit: u32) -> Result<(), Error> {
     let new_recip = Address::generate(&h.env);
     let outcome = match op_bit {
-        op::WITHDRAW => h.client.try_delegate_withdraw(&id, agent, &None).map(|_| ()),
+        op::WITHDRAW => h
+            .client
+            .try_delegate_withdraw(&id, agent, &None)
+            .map(|_| ()),
         op::CANCEL => h.client.try_delegate_cancel(&id, agent).map(|_| ()),
         op::PAUSE => h.client.try_delegate_pause(&id, agent).map(|_| ()),
         op::RESUME => h.client.try_delegate_resume(&id, agent).map(|_| ()),

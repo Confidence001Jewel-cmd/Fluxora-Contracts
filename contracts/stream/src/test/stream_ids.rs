@@ -156,7 +156,10 @@ fn terminated_stream_ids_are_never_reissued() {
 
     h.warp_to(T0 + DAY);
     h.client.withdraw(&next_after_cancel, &None);
-    assert_eq!(h.get(next_after_cancel).status, crate::StreamStatus::Depleted);
+    assert_eq!(
+        h.get(next_after_cancel).status,
+        crate::StreamStatus::Depleted
+    );
 
     let next_after_depletion = h.create_simple(10 * ONE, DAY);
     assert_eq!(next_after_depletion, 2);

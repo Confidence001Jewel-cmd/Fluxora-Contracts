@@ -520,12 +520,7 @@ fn the_published_settlement_required_the_senders_authorization() {
 // that divide the schedule evenly and ones that do not.
 
 /// See `test::cancel` for why these particular deposits are chosen.
-const START_TIME_DEPOSITS: [i128; 4] = [
-    8_640_000,
-    8_640_001,
-    1_000 * ONE,
-    123_456_789_013,
-];
+const START_TIME_DEPOSITS: [i128; 4] = [8_640_000, 8_640_001, 1_000 * ONE, 123_456_789_013];
 
 #[test]
 fn cancel_at_start_time_publishes_the_exact_refunded_amount() {
