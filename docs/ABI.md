@@ -138,6 +138,20 @@ Crosses the ABI as its **discriminant**, not its name.
 `Cancelled`. It never becomes `Depleted`. This distinction is deliberate and
 load-bearing for reporting — see the resolved schema question below.
 
+### Stream ID allocation
+
+Stream IDs are a zero-based, monotonic sequence scoped to one contract
+deployment. A successfully issued ID is never reused, including after its
+stream is cancelled, depleted, or its persistent entry is archived. Failed
+`create_stream` calls do not consume an ID. When the next ID reaches
+`u64::MAX`, creation fails with `StreamIdExhausted` (24) rather than wrapping.
+
+The contract cannot be upgraded in place. A changed implementation requires a
+new contract address and starts an independent ID sequence, so IDs are not
+globally unique across deployments. Integrators should key records by both
+contract address and stream ID. Any future design that adds in-place upgrades
+must preserve the allocation counter.
+
 ### Capability flags
 
 Three `bool` fields on `Stream` describe operations that are **not available**
