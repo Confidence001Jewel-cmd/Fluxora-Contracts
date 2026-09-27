@@ -593,9 +593,8 @@ jobs:
       # --nocapture ensures the failing seed appears in the job log immediately.
       - name: Bounded randomized fuzz pass
         run: |
-          cargo test -p fluxora_stream --features testutils \
-            the_pool_invariant_holds_across_random_operation_sequences \
-            the_pool_invariant_holds_across_long_sequences \
+          cargo test -p fluxora-stream --features testutils \
+            the_pool_invariant_holds_across \
             -- --nocapture --test-threads=1
         env:
           # PR budget: light enough to keep the job under 5 minutes.
@@ -605,7 +604,7 @@ jobs:
 
       - name: Bounded proptest accrual pass
         run: |
-          cargo test -p fluxora_stream --features testutils \
+          cargo test -p fluxora-stream --features testutils \
             props:: \
             -- --nocapture
         env:
@@ -616,7 +615,7 @@ jobs:
       # nightly run.
       - name: Regression guard — depleted-while-paused
         run: |
-          cargo test -p fluxora_stream --features testutils \
+          cargo test -p fluxora-stream --features testutils \
             depleting_a_paused_stream_closes_out_the_pause \
             -- --nocapture
 
@@ -686,7 +685,7 @@ jobs:
       # `test = false` in contracts/stream/Cargo.toml, so `--features testutils`
       # builds and runs cleanly. Snapshot and gas regressions must fail the build.
       - name: Run tests with snapshot validation
-        run: cargo test -p fluxora_stream --features testutils -- --nocapture
+        run: cargo test -p fluxora-stream --features testutils -- --nocapture
         env:
           # Ensure snapshots are validated, not updated
           SOROBAN_SNAPSHOT_UPDATE: ""
@@ -873,7 +872,7 @@ jobs:
             --ignore-tests \
             --skip-clean \
             --timeout 300 \
-            -p fluxora_stream
+            -p fluxora-stream
 
       - name: Enforce committed coverage floor
         run: |

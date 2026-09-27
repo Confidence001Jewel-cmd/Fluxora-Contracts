@@ -22,7 +22,7 @@ cargo tarpaulin \
   --ignore-tests \
   --skip-clean \
   --timeout 300 \
-  -p fluxora_stream
+  -p fluxora-stream
 python3 script/check_stream_coverage.py \
   --xml coverage/cobertura.xml \
   --floor contracts/stream/coverage-floor.txt
