@@ -10,7 +10,7 @@ from pathlib import Path
 try:
     import tomllib
 except ModuleNotFoundError:  # pragma: no cover
-    import tomli as tomllib  # type: ignore
+    tomllib = None
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 TOOLCHAIN_FILE = REPO_ROOT / "rust-toolchain.toml"

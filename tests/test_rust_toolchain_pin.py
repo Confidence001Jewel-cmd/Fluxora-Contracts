@@ -24,6 +24,13 @@ def test_pinned_values_match_workspace_toolchain():
     assert set(verify_rust_version.pinned_components(TOOLCHAIN)) == {"rustfmt", "clippy"}
 
 
+def test_toolchain_loader_uses_builtin_fallback_without_tomllib(monkeypatch):
+    monkeypatch.setattr(verify_rust_version, "tomllib", None)
+    data = verify_rust_version._load_toolchain(TOOLCHAIN)
+    assert data["toolchain"]["channel"] == "1.97.1"
+    assert data["toolchain"]["targets"] == ["wasm32v1-none"]
+
+
 def test_parse_rustc_version_extracts_semver():
     assert verify_rust_version.parse_rustc_version("rustc 1.97.1 (abcdef 2026-01-01)") == "1.97.1"
 
