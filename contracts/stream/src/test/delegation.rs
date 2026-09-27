@@ -804,3 +804,266 @@ fn the_old_recipient_cannot_revoke_after_a_transfer() {
         delegate_call(&h, id, &agent, op_bit);
     }
 }
+// ---------------------------------------------------------------------------
+// Guard parity — the delegate entry points re-check the owner-path guards
+//
+// `check_delegate` only validates the grant (existence, expiry, op bit); it
+// does not look at the stream. Each `delegate_*` entry point therefore repeats
+// the terminal, amount-domain, maturity, and self-transfer guards of its owner
+// counterpart. These tests pin those replicated rejections so the two paths
+// cannot drift apart silently.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn delegate_withdraw_reports_nothing_to_withdraw_before_accrual() {
+    let h = Harness::new();
+    let start = h.now() + 10 * DAY;
+    let id = h.create(100 * ONE, start, start + 100 * DAY, start, true, true, true);
+    let agent = Address::generate(&h.env);
+    h.client
+        .grant_delegate(&id, &h.recipient, &agent, &op::WITHDRAW, &None);
+
+    // No accrual yet, but the stream is still live: that is `NothingToWithdraw`,
+    // not `StreamTerminated`.
+    let err = h
+        .client
+        .try_delegate_withdraw(&id, &agent, &None)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::NothingToWithdraw);
+    h.assert_pool_exact();
+}
+
+#[test]
+fn delegate_withdraw_on_a_settled_stream_is_terminated() {
+    let h = Harness::new();
+    let id = h.create_simple(1_000 * ONE, 10 * DAY);
+    let agent = Address::generate(&h.env);
+    h.client
+        .grant_delegate(&id, &h.recipient, &agent, &op::WITHDRAW, &None);
+
+    h.advance(10 * DAY);
+    h.client.withdraw(&id, &None);
+    assert_eq!(h.get(id).status, crate::StreamStatus::Depleted);
+
+    // Nothing is left to withdraw and the stream is over: the delegate path
+    // must report `StreamTerminated`, never pay twice.
+    let err = h
+        .client
+        .try_delegate_withdraw(&id, &agent, &None)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamTerminated);
+    h.assert_pool_exact();
+}
+
+#[test]
+fn delegate_withdraw_uses_the_same_amount_domain_as_withdraw() {
+    let h = Harness::new();
+    let id = h.create_simple(1_000 * ONE, 100 * DAY);
+    let agent = Address::generate(&h.env);
+    h.client
+        .grant_delegate(&id, &h.recipient, &agent, &op::WITHDRAW, &None);
+    h.advance(30 * DAY); // exactly 300 ONE accrued
+
+    // An explicit partial amount is honoured.
+    let paid = h.client.delegate_withdraw(&id, &agent, &Some(100 * ONE));
+    assert_eq!(paid, 100 * ONE);
+
+    for amount in [0i128, -1] {
+        let err = h
+            .client
+            .try_delegate_withdraw(&id, &agent, &Some(amount))
+            .unwrap_err()
+            .unwrap();
+        assert_eq!(err, Error::InvalidAmount, "amount {amount}");
+    }
+
+    // 200 ONE remains accrued, so 300 ONE exceeds what is available.
+    let err = h
+        .client
+        .try_delegate_withdraw(&id, &agent, &Some(300 * ONE))
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::InsufficientWithdrawable);
+    h.assert_pool_exact();
+}
+
+#[test]
+fn delegate_cancel_rejects_a_stream_that_is_already_terminal() {
+    let h = Harness::new();
+    let id = h.create_simple(1_000 * ONE, 100 * DAY);
+    let agent = Address::generate(&h.env);
+    h.client
+        .grant_delegate(&id, &h.sender, &agent, &op::CANCEL, &None);
+
+    h.advance(10 * DAY);
+    h.client.delegate_cancel(&id, &agent);
+
+    let err = h
+        .client
+        .try_delegate_cancel(&id, &agent)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamTerminated);
+    h.assert_pool_exact();
+}
+
+#[test]
+fn delegate_pause_rejects_already_paused_and_terminal_streams() {
+    let h = Harness::new();
+    let agent = Address::generate(&h.env);
+
+    let paused = h.create_simple(1_000 * ONE, 100 * DAY);
+    h.client
+        .grant_delegate(&paused, &h.sender, &agent, &op::PAUSE, &None);
+    h.client.delegate_pause(&paused, &agent);
+    let err = h
+        .client
+        .try_delegate_pause(&paused, &agent)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamAlreadyPaused);
+
+    let settled = h.create_simple(1_000 * ONE, 100 * DAY);
+    h.client
+        .grant_delegate(&settled, &h.sender, &agent, &op::PAUSE, &None);
+    h.client.cancel(&settled);
+    let err = h
+        .client
+        .try_delegate_pause(&settled, &agent)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamTerminated);
+}
+
+#[test]
+fn delegate_resume_rejects_not_paused_and_terminal_streams() {
+    let h = Harness::new();
+    let agent = Address::generate(&h.env);
+
+    let active = h.create_simple(1_000 * ONE, 100 * DAY);
+    h.client
+        .grant_delegate(&active, &h.sender, &agent, &op::RESUME, &None);
+    let err = h
+        .client
+        .try_delegate_resume(&active, &agent)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamNotPaused);
+
+    let settled = h.create_simple(1_000 * ONE, 100 * DAY);
+    h.client
+        .grant_delegate(&settled, &h.sender, &agent, &op::RESUME, &None);
+    h.client.cancel(&settled);
+    let err = h
+        .client
+        .try_delegate_resume(&settled, &agent)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamTerminated);
+}
+
+#[test]
+fn delegate_top_up_guards_terminal_invalid_matured_and_sub_second() {
+    let h = Harness::new();
+    let agent = Address::generate(&h.env);
+
+    // Terminal stream.
+    let settled = h.create_simple(1_000 * ONE, 10 * DAY);
+    h.client
+        .grant_delegate(&settled, &h.sender, &agent, &op::TOP_UP, &None);
+    h.advance(10 * DAY);
+    h.client.withdraw(&settled, &None);
+    let err = h
+        .client
+        .try_delegate_top_up(&settled, &agent, &(100 * ONE))
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamTerminated);
+
+    // Non-positive amount.
+    let live = h.create_simple(1_000 * ONE, 100 * DAY);
+    h.client
+        .grant_delegate(&live, &h.sender, &agent, &op::TOP_UP, &None);
+    let err = h
+        .client
+        .try_delegate_top_up(&live, &agent, &0)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::InvalidAmount);
+
+    // Matured stream.
+    h.warp_to(h.get(live).end_time);
+    let err = h
+        .client
+        .try_delegate_top_up(&live, &agent, &(100 * ONE))
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamMatured);
+
+    // 100 stroops/sec: one stroop buys no extra second, so it is rejected
+    // rather than absorbed by raising the rate.
+    let start = h.now();
+    let dense = h.create(10_000, start, start + 100, start, true, true, true);
+    h.client
+        .grant_delegate(&dense, &h.sender, &agent, &op::TOP_UP, &None);
+    let err = h
+        .client
+        .try_delegate_top_up(&dense, &agent, &1)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::TopUpTooSmall);
+    h.assert_pool_exact();
+}
+
+#[test]
+fn delegate_transfer_recipient_guards_repeat_and_settled_streams() {
+    let h = Harness::new();
+    let id = h.create_simple(1_000 * ONE, 10 * DAY);
+    let agent = Address::generate(&h.env);
+    h.client
+        .grant_delegate(&id, &h.recipient, &agent, &op::TRANSFER_RECIPIENT, &None);
+
+    // Reassigning to the current recipient is a deliberate no-op.
+    h.client
+        .delegate_transfer_recipient(&id, &agent, &h.recipient);
+    assert_eq!(h.get(id).recipient, h.recipient);
+
+    // A fully withdrawn stream has no claim to reassign.
+    h.advance(10 * DAY);
+    h.client.withdraw(&id, &None);
+    let err = h
+        .client
+        .try_delegate_transfer_recipient(&id, &agent, &h.other)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamTerminated);
+    h.assert_pool_exact();
+}
+
+#[test]
+fn grant_delegate_rejects_a_terminal_stream_and_zero_ops_grants_nothing() {
+    let h = Harness::new();
+    let agent = Address::generate(&h.env);
+
+    let settled = h.create_simple(1_000 * ONE, 100 * DAY);
+    h.client.cancel(&settled);
+    let err = h
+        .client
+        .try_grant_delegate(&settled, &h.sender, &agent, &op::CANCEL, &None)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::StreamTerminated);
+
+    // `ops == 0` is a no-op that grants nothing.
+    let live = h.create_simple(1_000 * ONE, 100 * DAY);
+    h.client
+        .grant_delegate(&live, &h.recipient, &agent, &0, &None);
+    let err = h
+        .client
+        .try_delegate_withdraw(&live, &agent, &None)
+        .unwrap_err()
+        .unwrap();
+    assert_eq!(err, Error::DelegateNotPermitted);
+}
